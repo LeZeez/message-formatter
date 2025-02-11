@@ -15,3 +15,5 @@ Applies the format to all AI messages
 /undoformat
 ```
 Undoes everything.
+
+> This was based on my personal preferences, feel free to use it.
