@@ -1,12 +1,12 @@
 ## An ST all AI messages formatter.
 It converts fairly any message to:
 - 1 paragraph
-- *narration/actions*
-- "dialogues"
+- bare text –› *narration/actions*
+- “dialogue,” –› "dialogue."
 - replaces commas at the end of dialogues with something based on the feelings of the message
 
 ---
-
+### To make it work properly, Always make sure dialogues are in "quotes"
 ```
 /format
 ```
