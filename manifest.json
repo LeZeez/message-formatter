@@ -1,13 +1,12 @@
 {
-    "display_name": "Zeez Formatter",
-    "loading_order": 2,
+    "display_name": "Message Formatter",
+    "loading_order": 10,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "",
-    "author": "Zeez",
+    "author": "LeZeez",
     "version": "1.0",
-    "homePage": "https://github.com/idkidkidkidk",
-    "auto_update": false
-  }
-  
+    "homePage": "https://github.com/LeZeez/message-formatter",
+    "auto_update": true
+}
