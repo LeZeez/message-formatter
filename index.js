@@ -198,7 +198,8 @@ function replaceCommaBasedOnSentiment(text) {
 
     // Remove any unintended "* *"
     formattedText = formattedText.replace(/\* \*/g, ' ');
-
+    // Remove any '" "'
+    formattedText = formattedText.replace(/\" \"/g, ' ');
     // Other cleanup (remove any double asterisks)
     formattedText = formattedText.replace(/\*\*/g, '*').trim();
 
