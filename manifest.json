@@ -1,0 +1,13 @@
+{
+    "display_name": "Zeez Formatter",
+    "loading_order": 2,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "",
+    "author": "Zeez",
+    "version": "1.0",
+    "homePage": "https://github.com/idkidkidkidk",
+    "auto_update": false
+  }
+  
