@@ -17,3 +17,4 @@ Applies the format to all AI messages
 Undoes everything.
 
 > This was based on my personal preferences, feel free to use it.
+> I actually suck at coding so don't expect much.
