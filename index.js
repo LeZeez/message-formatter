@@ -189,7 +189,7 @@ function replaceCommaBasedOnSentiment(text) {
         formattedText += narrationBlock + ' ';
     }
 
-    // --- NEW: Collapse all whitespace (including newlines) into a single space ---
+    // Collapse all whitespace (including newlines) into a single space ---
     formattedText = formattedText.replace(/\s+/g, ' ').trim();
 
     // Ensure dialogue is outside asterisks
@@ -200,7 +200,9 @@ function replaceCommaBasedOnSentiment(text) {
     formattedText = formattedText.replace(/\* \*/g, ' ');
     // Remove any '" "'
     formattedText = formattedText.replace(/\" \"/g, ' ');
-    // Other cleanup (remove any double asterisks)
+    // Makes sure all narration are in one block
+    formattedText = formattedText.replace(/(?<=\S)\*(?=\s+(?!")\S)/g, ' ');
+    // Remove any double asterisks
     formattedText = formattedText.replace(/\*\*/g, '*').trim();
 
     return formattedText;
