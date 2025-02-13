@@ -1,5 +1,5 @@
 ## An ST all AI messages formatter.
-It converts fairly any message to:
+It converts fairly ~any message~ (some messages) to:
 - 1 paragraph
 - bare text –› *narration/actions*
 - “dialogue,” –› "dialogue."
@@ -16,5 +16,9 @@ Applies the format to all AI messages
 ```
 Undoes everything.
 
-> This was based on my personal preferences, feel free to use it.
+> This was based on my personal preferences, but feel free to use it.
+
 > I actually suck at coding so don't expect much.
+
+---
+I'm planning to make it more customizable, but for now i'm aiming for stability.
