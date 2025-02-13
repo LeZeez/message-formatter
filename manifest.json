@@ -6,7 +6,7 @@
     "js": "index.js",
     "css": "",
     "author": "LeZeez",
-    "version": "1.0",
+    "version": "1.0.1",
     "homePage": "https://github.com/LeZeez/message-formatter",
     "auto_update": true
 }
