@@ -182,10 +182,10 @@ function replaceCommaBasedOnSentiment(text) {
     }
 
     formattedText = formattedText.replace(/\s+/g, ' ').trim();
+    formattedText = formattedText.replace(/(?<="[^"]*)\*(?=[^"]*")/g, ' ');
     formattedText = formattedText.replace(/\*"([^"]+)"\*/g, '"$1"');
     formattedText = formattedText.replace(/\*"/g, '* "').replace(/"\*/g, '" *');
     formattedText = formattedText.replace(/\* \*/g, ' ');
-    formattedText = formattedText.replace(/(?<="[^"]*)\*(?=[^"]*")/g, ' ');
     formattedText = formattedText.replace(/\*\*/g, '*').trim();
 
     return formattedText;
