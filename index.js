@@ -133,13 +133,11 @@ function replaceCommaBasedOnSentiment(text) {
         return text;
     }
 
-    text = text.replace(/["“”]/g, '"');
+    text = text.replace(/["“”]/g, '"').replace(/(?<="[^"]*)\*(?=[^"]*")/g, ' ');
 
     const parts = text.split('"');
     let formattedText = '';
     let narrationParts = [];
-    
-    formattedText = formattedText.replace(/(?<="[^"]*)\*(?=[^"]*")/g, ' ');
     
     parts.forEach((part, i) => {
         part = part.trim();
