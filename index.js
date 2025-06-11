@@ -23,10 +23,9 @@ class FormatterToolbox {
             findAndReplaceRules: [
                 { find: "i'm", replaceWith: "I'm", isRegex: false, caseSensitive: false, enabled: true },
                 { find: "i ", replaceWith: "I ", isRegex: false, caseSensitive: false, enabled: true },
-                { find: "(\\s+)([.,?!])", replaceWith: "$2", isRegex: true, caseSensitive: false, enabled: true },
+                { find: "(\\s+)([.,?!])", replaceWith: "$2", isRegex: true, caseSensitive: false, enabled: true }, // Removes space before punctuation
                 { find: "gonna", replaceWith: "going to", isRegex: false, caseSensitive: false, enabled: true },
-                { find: "testcase", replaceWith: "TestCase", isRegex: false, caseSensitive: true, enabled: true },
-                { find: "Testcase", replaceWith: "SHOULD NOT REPLACE", isRegex: false, caseSensitive: true, enabled: true }
+                { find: "\\s\\s+", replaceWith: " ", isRegex: true, caseSensitive: false, enabled: true } // Double space to single
             ],
             paragraphControlMode: 'none',
             paragraphControlMax: 3,
@@ -41,6 +40,11 @@ class FormatterToolbox {
             caseFormatterSentenceCase: true,
             toolOrder: [],
             quickActionToolbarEnabled: false,
+            quickActionWrapperPresets: [
+                { name: "Parentheses", start: "(", end: ")" },
+                { name: "Brackets", start: "[", end: "]" },
+                { name: "Braces", start: "{", end: "}" }
+            ],
             tagAutoCloseEnabled: false // Added this default
         };
         this.tools.push(new FindAndReplaceTool());
@@ -51,11 +55,72 @@ class FormatterToolbox {
     }
 
     loadSettings() {
-        extension_settings[extensionName] = extension_settings[extensionName] || {};
-        if (Object.keys(extension_settings[extensionName]).length === 0) {
-            Object.assign(extension_settings[extensionName], this.defaultSettings);
+        let savedSettings = extension_settings[extensionName];
+
+        if (!savedSettings || Object.keys(savedSettings).length === 0) {
+            // No settings saved or empty object, so deep clone defaultSettings
+            this.settings = JSON.parse(JSON.stringify(this.defaultSettings));
+            extension_settings[extensionName] = this.settings;
+        } else {
+            // Start with a full copy of defaultSettings to ensure all keys are present
+            this.settings = JSON.parse(JSON.stringify(this.defaultSettings));
+
+            // Overwrite defaults with saved settings for known keys
+            for (const key in this.settings) { // Iterate over keys from defaultSettings
+                if (savedSettings.hasOwnProperty(key)) {
+                    // For arrays, if saved value is an array, use it. Otherwise, default is already set.
+                    // This means user's saved arrays (rules, presets) replace default arrays.
+                    if (Array.isArray(this.settings[key])) {
+                        if (Array.isArray(savedSettings[key])) {
+                            this.settings[key] = savedSettings[key];
+                        }
+                        // If saved key is not an array but default is, default is kept (from initial clone).
+                    }
+                    // For non-array types, directly assign the saved value.
+                    else {
+                        this.settings[key] = savedSettings[key];
+                    }
+                }
+            }
+
+            // Ensure specific array typed settings are valid arrays, re-defaulting if corrupted.
+            ['findAndReplaceRules', 'styleMapperRules', 'quickActionWrapperPresets', 'toolOrder'].forEach(key => {
+                if (!Array.isArray(this.settings[key])) {
+                    // If corrupted (not an array), reset to the default for that specific key
+                    this.settings[key] = JSON.parse(JSON.stringify(this.defaultSettings[key]));
+                }
+            });
+
+            // Special handling for toolOrder integrity
+            const currentToolNames = this.tools.map(tool => tool.constructor.name);
+            if (currentToolNames.length > 0) { // Only process toolOrder if tools are defined
+                let validOrder = Array.isArray(this.settings.toolOrder) ? this.settings.toolOrder : [];
+
+                // Filter out tools from saved order that no longer exist
+                validOrder = validOrder.filter(toolName => currentToolNames.includes(toolName));
+
+                const existingInOrder = new Set(validOrder);
+                // Add any new tools (present in currentToolNames but not in validOrder) to the end
+                currentToolNames.forEach(toolName => {
+                    if (!existingInOrder.has(toolName)) {
+                        validOrder.push(toolName);
+                    }
+                });
+                this.settings.toolOrder = validOrder;
+
+                // If, after all this, toolOrder is empty (e.g., first load after tools are defined, or all saved tools were invalid)
+                // or if its length doesn't match the current tools (meaning some were only filtered out, not added)
+                // then reset to the default order based on current tools.
+                if (this.settings.toolOrder.length === 0 || this.settings.toolOrder.length !== currentToolNames.length) {
+                     this.settings.toolOrder = [...currentToolNames];
+                }
+            } else {
+                 this.settings.toolOrder = []; // No tools, empty order
+            }
+
+            // Update the global extension_settings object with the merged and validated settings
+            Object.assign(extension_settings[extensionName], this.settings);
         }
-        this.settings = extension_settings[extensionName];
     }
 
     saveSettings() {
@@ -91,8 +156,9 @@ class FormatterToolbox {
             $('#cf-sentence-case').off('change').on('change', () => this.updateCaseFormatterSettings());
         }
         if (typeof this.renderQuickActionSettings === 'function') {
-            this.renderQuickActionSettings();
+            this.renderQuickActionSettings(); // This will now also render presets
             $('#qa-toolbar-enabled').off('change').on('change', () => this.updateQuickActionSettings());
+            // Event listeners for new preset UI will be in renderQuickActionSettings
         }
         if (typeof this.renderTagAutoCloseSettings === 'function') {
             this.renderTagAutoCloseSettings();
@@ -162,7 +228,10 @@ class FormatterToolbox {
             });
         } else { if (!this.sortableWarningShown) { console.log("FormatterToolbox: SortableJS not available."); this.sortableWarningShown = true;}}
     }
-    renderFindAndReplaceRules() { /* ... (already implemented) ... */
+    renderFindAndReplaceRules() {
+        const description = "Purpose: To perform initial, raw text cleanup. It's perfect for fixing common AI typos (e.g., `i` -> `I`), removing unwanted artifacts (e.g., extra spaces before punctuation), or making consistent word choice substitutions (`gonna` -> `going to`). Features: A user-managed list of replacement rules. Each rule can be a simple text-to-text replacement or a powerful Regular Expression (Regex) replacement. Rules can be individually enabled, disabled, edited, and deleted.";
+        $('#tab-find-replace .tool-description').html(description);
+
         const container = $('#fnr-rules-container');
         if (!container.length) return;
         container.empty();
@@ -202,7 +271,10 @@ class FormatterToolbox {
             this.saveSettings(); this.renderFindAndReplaceRules();
         }
     }
-    renderParagraphControlSettings() { /* ... (already implemented) ... */
+    renderParagraphControlSettings() {
+        const description = "Purpose: To enforce a consistent paragraph structure in the AI's response. Features: Force Single Paragraph: Collapses the entire response into one paragraph. Allow Maximum: Ensures the response does not exceed a user-defined number of paragraphs. Ensure Minimum: Ensures the response has at least a user-defined number of paragraphs (does nothing if it already meets the minimum).";
+        $('#tab-paragraph-control .tool-description').html(description);
+
         if (!$('#pc-mode').length) return;
         const s = this.settings;
         $('#pc-mode').val(s.paragraphControlMode || 'none');
@@ -223,7 +295,10 @@ class FormatterToolbox {
         this.settings.paragraphControlMin = parseInt($('#pc-min-paras').val(),10) || 1;
         this.saveSettings(); this.toggleParagraphControlInputs();
     }
-    renderStyleMapperRules() { /* ... (already implemented) ... */
+    renderStyleMapperRules() {
+        const description = "Purpose: The core of semantic detection. This tool finds text patterns and wraps them in invisible tags, telling other tools 'this part is dialogue' or 'this part is a thought.' It doesn't change the visual style itself, but prepares the text for other tools. Features: A user-managed list of style rules based on Regex. Allows the user to define what patterns constitute different elements. For example: A rule to find text in asterisks (`*...*`) and tag it as a 'thought'. A rule to find text in quotes (`\"...\"`) and tag it as 'dialogue'.";
+        $('#tab-style-mapper .tool-description').html(description);
+
         const container = $('#sm-rules-container');
         if (!container.length) return; container.empty();
         const rules = this.settings.styleMapperRules || [];
@@ -262,7 +337,10 @@ class FormatterToolbox {
             this.saveSettings(); this.renderStyleMapperRules();
         }
     }
-    renderSmartPunctuationSettings() { /* ... (already implemented) ... */
+    renderSmartPunctuationSettings() {
+        const description = "Purpose: The evolution of the original extension idea. It intelligently formats punctuation but is now much smarter because it acts upon the tags created by the Style Mapper. Features: Targets a specific element (e.g., only text tagged as 'dialogue'). Finds a target punctuation mark (e.g., a comma `,`) at the end of a line. Replaces it with different punctuation based on a sentiment analysis of the text (`!`, `...`, `.`, etc.). All replacement characters and sentiment thresholds are user-configurable.";
+        $('#tab-smart-punctuation .tool-description').html(description);
+
         if (!$('#sp-enabled').length) return;
         const s = this.settings;
         if (s.smartPunctuationEnabled === undefined) s.smartPunctuationEnabled = true;
@@ -285,7 +363,10 @@ class FormatterToolbox {
         this.settings.negativeThreshold = parseFloat($('#sp-negative-threshold').val()) || -0.05;
         this.saveSettings();
     }
-    renderCaseFormatterSettings() { /* ... (already implemented) ... */
+    renderCaseFormatterSettings() {
+        const description = "Purpose: A final polishing tool to ensure consistent capitalization after all other text manipulations have occurred. Features: Sentence case: Automatically capitalizes the first letter of every sentence, fixing common AI errors where a new sentence starts with a lowercase letter.";
+        $('#tab-case-formatter .tool-description').html(description);
+
         if (!$('#cf-sentence-case').length) return;
         const s = this.settings;
         if (s.caseFormatterSentenceCase === undefined) s.caseFormatterSentenceCase = true;
@@ -296,46 +377,275 @@ class FormatterToolbox {
         this.settings.caseFormatterSentenceCase = $('#cf-sentence-case').is(':checked');
         this.saveSettings();
     }
-    renderQuickActionSettings() { /* ... (already implemented) ... */
+    renderQuickActionSettings() {
         if (!$('#qa-toolbar-enabled').length) return;
         const s = this.settings;
         if (s.quickActionToolbarEnabled === undefined) s.quickActionToolbarEnabled = false;
         $('#qa-toolbar-enabled').prop('checked', s.quickActionToolbarEnabled);
+
+        // Render presets
+        const presetsContainer = $('#qa-presets-list-container');
+        presetsContainer.empty();
+        this.settings.quickActionWrapperPresets = this.settings.quickActionWrapperPresets || [];
+        this.settings.quickActionWrapperPresets.forEach((preset, index) => {
+            const itemHtml = `
+                <div class="formatter-rule-item qa-preset-item" data-preset-index="${index}">
+                    <div><label>Name:</label><span>${$('<div>').text(preset.name).html()}</span></div>
+                    <div><label>Start:</label><code>${$('<div>').text(preset.start).html()}</code></div>
+                    <div><label>End:</label><code>${$('<div>').text(preset.end).html()}</code></div>
+                    <button class="formatter-button delete qa-delete-preset" style="margin-left:auto;">Delete</button>
+                </div>`;
+            presetsContainer.append(itemHtml);
+        });
+
+        // Add event listener for adding a new preset
+        $('#qa-add-preset').off('click').on('click', () => {
+            const name = $('#qa-preset-name').val().trim();
+            const start = $('#qa-preset-start').val().trim();
+            const end = $('#qa-preset-end').val().trim();
+            if (name && start) { // End can be empty for self-closing style tags, though less common for wrappers
+                this.settings.quickActionWrapperPresets.push({ name, start, end });
+                this.saveSettings();
+                this.renderQuickActionSettings(); // Re-render to show the new preset
+                this.injectToolbarHTML(true); // Force toolbar refresh
+                $('#qa-preset-name, #qa-preset-start, #qa-preset-end').val(''); // Clear inputs
+            } else {
+                toastr.warning("Preset Name and Start Wrapper are required.");
+            }
+        });
+
+        // Add event listener for deleting presets (event delegation)
+        presetsContainer.off('click', '.qa-delete-preset').on('click', '.qa-delete-preset', (e) => {
+            const indexToDelete = $(e.currentTarget).closest('.qa-preset-item').data('preset-index');
+            if (this.settings.quickActionWrapperPresets[indexToDelete]) {
+                this.settings.quickActionWrapperPresets.splice(indexToDelete, 1);
+                this.saveSettings();
+                this.renderQuickActionSettings(); // Re-render the list
+                this.injectToolbarHTML(true); // Force toolbar refresh
+            }
+        });
     }
-    updateQuickActionSettings() { /* ... (already implemented) ... */
+
+    updateQuickActionSettings() {
         if (!$('#qa-toolbar-enabled').length) return;
         this.settings.quickActionToolbarEnabled = $('#qa-toolbar-enabled').is(':checked');
+        // Presets are saved directly by their add/delete handlers.
         this.saveSettings();
         if (this.settings.quickActionToolbarEnabled) {
-            this.injectToolbarHTML(); this.initializeTextSelectionListener();
-        } else { this.removeTextSelectionListener(); }
-    }
-    injectToolbarHTML() { /* ... (already implemented) ... */
-        if ($('#quick-action-toolbar').length === 0) {
-            const html = `<div id="quick-action-toolbar" style="display: none; position: absolute; background-color: #fff; border: 1px solid #ccc; border-radius: 4px; padding: 5px; box-shadow: 2px 2px 5px rgba(0,0,0,0.2); z-index: 1005; flex-wrap: wrap; gap: 3px;"><button data-action="wrap-asterisk" title="Wrap in *">*Wrap*</button><button data-action="wrap-underscore" title="Wrap in _">_Wrap_</button><button data-action="wrap-quotes" title="Wrap in &quot;">"Wrap"</button><button data-action="wrap-custom" title="Custom Wrap">Custom...</button><button data-action="remove-wrappers" title="Remove Wrappers">Rm Wraps</button><button data-action="delete-selection" style="color: red;" title="Delete Selection">Delete</button><select data-action="case-change" title="Change Case"><option value="">Case...</option><option value="sentence">Sentence</option><option value="lower">lowercase</option><option value="upper">UPPERCASE</option></select></div>`;
-            $('body').append(html); this.bindToolbarActions();
+            this.injectToolbarHTML(true); // Force refresh to show/hide presets
+            this.initializeTextSelectionListener();
+        } else {
+            this.removeTextSelectionListener();
+            $('#quick-action-toolbar').remove(); // Remove toolbar if disabled
         }
     }
-    bindToolbarActions() { /* ... (already implemented) ... */
-        const toolbar = $('#quick-action-toolbar'); if (!toolbar.length) { this.injectToolbarHTML(); }
-        toolbar.off('click.qaActions').on('click.qaActions', 'button[data-action]', (e) => { const a = $(e.currentTarget).data('action'); this.handleQuickAction(a); e.stopPropagation(); });
-        toolbar.off('change.qaActions').on('change.qaActions', 'select[data-action="case-change"]', (e) => { const act = $(e.currentTarget).data('action'); const val = $(e.currentTarget).val(); if (val) { this.handleQuickAction(act, val); } e.stopPropagation(); $(e.currentTarget).val(""); });
+
+    injectToolbarHTML(forceRefresh = false) {
+        if (forceRefresh && $('#quick-action-toolbar').length > 0) {
+            $('#quick-action-toolbar').remove();
+        }
+        if ($('#quick-action-toolbar').length === 0) {
+            let presetButtonsHtml = '';
+            if (this.settings.quickActionWrapperPresets && this.settings.quickActionToolbarEnabled) {
+                this.settings.quickActionWrapperPresets.forEach(preset => {
+                    presetButtonsHtml += `<button data-action="wrap-custom-preset" data-start="${$('<div>').text(preset.start).html()}" data-end="${$('<div>').text(preset.end).html()}" title="Wrap with ${$('<div>').text(preset.name).html()}">${$('<div>').text(preset.name).html()}</button>`;
+                });
+            }
+
+            const baseToolbarHtml = `
+                <button data-action="wrap-asterisk" title="Wrap in *">*Wrap*</button>
+                <button data-action="wrap-underscore" title="Wrap in _">_Wrap_</button>
+                <button data-action="wrap-quotes" title="Wrap in &quot;">"Wrap"</button>
+                ${presetButtonsHtml}
+                <button data-action="wrap-custom" title="Custom Wrap">Custom...</button>
+                <button data-action="remove-wrappers" title="Remove Wrappers">Rm Wraps</button>
+                <button data-action="delete-selection" style="color: red;" title="Delete Selection">Delete</button>
+                <select data-action="case-change" title="Change Case">
+                    <option value="">Case...</option>
+                    <option value="sentence">Sentence</option><option value="lower">lowercase</option><option value="upper">UPPERCASE</option>
+                </select>
+                <button data-action="undo-quick-action" title="Undo Last Quick Action" style="display:none; margin-left: auto; background-color: #ffebcc; color: #542605; border-color: #e0c4a0;">Undo QA</button>`;
+
+            const finalHtml = `<div id="quick-action-toolbar" style="display: none; position: absolute; background-color: #f8f8f8; border: 1px solid #bbb; border-radius: 4px; padding: 5px; box-shadow: 2px 2px 8px rgba(0,0,0,0.25); z-index: 1005; flex-wrap: wrap; gap: 3px;">${baseToolbarHtml}</div>`;
+            $('body').append(finalHtml);
+            this.bindToolbarActions();
+        }
     }
-    handleQuickAction(action, value = null) { /* ... (already implemented) ... */
-        const toolbar = $('#quick-action-toolbar'); const details = toolbar.data('selectionDetails');
-        if (!details || !details.selection || !details.selection.rangeCount) { toolbar.hide(); return; }
+    bindToolbarActions() {
+        const toolbar = $('#quick-action-toolbar');
+        // Ensure toolbar exists, if not, inject it (e.g., if called before initial setup)
+        if (!toolbar.length) {
+            if (this.settings.quickActionToolbarEnabled) { // Only inject if enabled
+                this.injectToolbarHTML();
+            } else {
+                return; // Do not bind if toolbar is not meant to be there
+            }
+        }
+        // Re-fetch toolbar in case it was just injected
+        const currentToolbar = $('#quick-action-toolbar');
+        if (!currentToolbar.length) return; // Still no toolbar, exit
+
+        currentToolbar.off('click.qaActions').on('click.qaActions', 'button[data-action]', (e) => {
+            const button = $(e.currentTarget);
+            const action = button.data('action');
+            let value = null;
+            if (action === 'wrap-custom-preset') {
+                value = { start: button.data('start'), end: button.data('end') };
+            }
+            this.handleQuickAction(action, value); // Pass value for custom presets
+            e.stopPropagation();
+        });
+        currentToolbar.off('change.qaActions').on('change.qaActions', 'select[data-action="case-change"]', (e) => {
+            const select = $(e.currentTarget);
+            const action = select.data('action');
+            const val = select.val();
+            if (val) {
+                this.handleQuickAction(action, val);
+            }
+            e.stopPropagation();
+            select.val(""); // Reset select
+        });
+    }
+
+    handleQuickAction(action, value = null) {
+        const toolbar = $('#quick-action-toolbar');
+        const details = toolbar.data('selectionDetails'); // May be undefined if no selection (e.g. direct click on Undo QA)
+
+        if (action === 'undo-quick-action') {
+            const targetEl = toolbar.data('qa-target-element');
+            const undoState = $(targetEl).data('qa-undo-state');
+            if (targetEl && undoState !== undefined) {
+                const $targetEl = $(targetEl);
+                if ($targetEl.is('textarea, input')) {
+                    $targetEl.val(undoState);
+                    $targetEl.trigger('input'); // For compatibility with frameworks/event listeners
+                } else { // Assumed contenteditable (like .mes_text)
+                    $targetEl.html(undoState); // Restore HTML to preserve any internal structure
+                    if ($targetEl.hasClass('mes_text')) {
+                        const $mesDiv = $targetEl.closest('.mes');
+                        const mesId = $mesDiv.attr('mesid');
+                        const msgIndex = parseInt(mesId, 10);
+                        const context = getContext();
+                        if (!isNaN(msgIndex) && context.chat && context.chat[msgIndex]) {
+                            // Update data model based on the restored HTML's text content
+                            context.chat[msgIndex].mes = $targetEl.text();
+                            // No need to call coreMessageFormatting, HTML is restored.
+                            coreSaveChatDebounced();
+                        }
+                    }
+                }
+                $(targetEl).removeData('qa-undo-state');
+                toolbar.find('button[data-action="undo-quick-action"]').hide();
+                toolbar.removeData('qa-target-element');
+            }
+            return; // Undo action is done
+        }
+
+        if (!details || !details.selection || !details.selection.rangeCount) {
+            // If no selection, and not an undo action, hide toolbar and return
+            toolbar.hide();
+            // Clear stale undo state too if selection is lost
+            const undoButton = toolbar.find('button[data-action="undo-quick-action"]');
+            if (undoButton.is(':visible')) {
+                const undoTarget = toolbar.data('qa-target-element');
+                if (undoTarget) $(undoTarget).removeData('qa-undo-state');
+                undoButton.hide();
+                toolbar.removeData('qa-target-element');
+            }
+            return;
+        }
+
         const selection = details.selection; const range = selection.getRangeAt(0); const selectedText = selection.toString();
         let newText = selectedText; let replaced = false;
+        let originalContent = null;
+
+        const $messageElementForUndo = $(details.messageElement);
+        if ($messageElementForUndo.is('textarea, input')) {
+            originalContent = $messageElementForUndo.val();
+        } else {
+            originalContent = $messageElementForUndo.html();
+        }
+
         switch (action) {
             case 'wrap-asterisk': newText = `*${selectedText}*`; replaced = true; break;
             case 'wrap-underscore': newText = `_${selectedText}_`; replaced = true; break;
             case 'wrap-quotes': newText = `"${selectedText}"`; replaced = true; break;
-            case 'wrap-custom': const cw = prompt("Wrappers (e.g., <,>)", details.lastCustomWrap || ""); if (cw) { details.lastCustomWrap = cw; toolbar.data('selectionDetails', details); const [s, e] = cw.split(','); if (s!==undefined&&e!==undefined) {newText=`${s.trim()}${selectedText}${e.trim()}`; replaced=true;} } break;
-            case 'remove-wrappers': if (selectedText.length >= 2) { const f=selectedText[0]; const l=selectedText[selectedText.length-1]; if ((f==='*'&&l==='*')||(f==='_'&&l==='_')||(f==='"'&&l==='"')||(f==='('&&l===')')||(f==='['&&l===']')||(f==='{'&&l==='}')) {newText=selectedText.slice(1,-1); replaced=true;} } break;
-            case 'delete-selection': newText = ''; replaced = true; break;
-            case 'case-change': if (value==='sentence') newText=this._toSentenceCaseHelper(selectedText); else if (value==='lower') newText=selectedText.toLowerCase(); else if (value==='upper') newText=selectedText.toUpperCase(); replaced=true; break;
+            case 'wrap-custom-preset':
+                if (value && value.start !== undefined && value.end !== undefined) {
+                    newText = `${value.start}${selectedText}${value.end}`;
+                    replaced = true;
+                }
+                break;
+            case 'wrap-custom':
+                const cw = prompt("Wrappers (e.g., <,> or just <tag> for self-closing)", details.lastCustomWrap || "");
+                if (cw) {
+                    details.lastCustomWrap = cw;
+                    toolbar.data('selectionDetails', details);
+                    const parts = cw.split(',');
+                    const startWrapper = parts[0].trim();
+                    const endWrapper = (parts.length > 1) ? parts[1].trim() : "";
+                    newText = `${startWrapper}${selectedText}${endWrapper}`;
+                    replaced = true;
+                }
+                break;
+            case 'remove-wrappers':
+                if (selectedText.length >= 2) {
+                    const f=selectedText[0];
+                    const l=selectedText[selectedText.length-1];
+                    if ((f==='*'&&l==='*')||(f==='_'&&l==='_')||(f==='"'&&l==='"')||
+                        (f==='('&&l===')')||(f==='['&&l===']')||(f==='{'&&l==='}')||
+                        (f==='<'&&l==='>')) {
+                        newText=selectedText.slice(1,-1); replaced=true;
+                    }
+                } break;
+            case 'delete-selection':
+                newText = '';
+                replaced = true;
+                break;
+            case 'case-change':
+                if (value==='sentence') newText=this._toSentenceCaseHelper(selectedText);
+                else if (value==='lower') newText=selectedText.toLowerCase();
+                else if (value==='upper') newText=selectedText.toUpperCase();
+                replaced=true;
+                break;
         }
-        if (replaced) { range.deleteContents(); range.insertNode(document.createTextNode(newText)); console.log("QA applied. Robust saving TODO."); selection.removeAllRanges(); toolbar.hide(); toolbar.removeData('selectionDetails');}
+
+        if (replaced) {
+            if (originalContent !== null && originalContent !== newText) { // Only store if content actually changed
+                $($messageElementForUndo).data('qa-undo-state', originalContent);
+                toolbar.data('qa-target-element', details.messageElement);
+                toolbar.find('button[data-action="undo-quick-action"]').show();
+            } else { // If no actual change or no original content, ensure Undo is hidden
+                toolbar.find('button[data-action="undo-quick-action"]').hide();
+                $(details.messageElement).removeData('qa-undo-state');
+                toolbar.removeData('qa-target-element');
+            }
+
+            range.deleteContents();
+            range.insertNode(document.createTextNode(newText));
+
+            const $messageElement = $(details.messageElement); // This is the same as $messageElementForUndo
+            if ($messageElement.hasClass('mes_text')) {
+                const $mesDiv = $messageElement.closest('.mes');
+                const mesId = $mesDiv.attr('mesid');
+                const msgIndex = parseInt(mesId, 10);
+                const context = getContext();
+
+                if (!isNaN(msgIndex) && context.chat && context.chat[msgIndex]) {
+                    const updatedFullMesText = $messageElement.text();
+                    context.chat[msgIndex].mes = updatedFullMesText;
+                    $messageElement.html(coreMessageFormatting(context.chat[msgIndex].mes, context.chat[msgIndex].name, context.chat[msgIndex].is_system, context.chat[msgIndex].is_user, msgIndex));
+                    coreSaveChatDebounced();
+                } else {
+                    console.error("QA Error: Could not find message to save for Quick Action.", details); // Keep error log
+                }
+            } else if ($messageElement.is('#send_textarea, #char_edit_textarea, #note_text_area')) {
+                $messageElement.trigger('input');
+            }
+
+            selection.removeAllRanges();
+            // toolbar.hide().removeData('selectionDetails'); // Keep toolbar visible for Undo
+        }
     }
     _toSentenceCaseHelper(str) { /* ... (already implemented) ... */
         const cf = this.tools.find(t => t.constructor.name === "CaseFormatterTool"); if (cf && typeof cf.toSentenceCase === 'function') return cf.toSentenceCase(str);
@@ -346,15 +656,62 @@ class FormatterToolbox {
         $(document).off('mouseup.qaToolbar').on('mouseup.qaToolbar', (e) => {
             if (!this.settings.quickActionToolbarEnabled) return;
             const sel = window.getSelection(); const txt = sel.toString().trim(); let tb = $('#quick-action-toolbar');
-            if (!tb.length) { this.injectToolbarHTML(); tb = $('#quick-action-toolbar');}
-            const $target = $(e.target); const $msgEl = $target.closest('.mes_text, #send_textarea, #char_edit_textarea, #note_text_area');
-            if (txt && $msgEl.length > 0 && !$target.closest('#quick-action-toolbar').length) {
+            if (!tb.length) {
+                this.injectToolbarHTML(); tb = $('#quick-action-toolbar');
+                if(!tb.length) return; // Still no toolbar, exit
+            }
+            const $target = $(e.target);
+            const $msgEl = $target.closest('.mes_text, #send_textarea, #char_edit_textarea, #note_text_area');
+            const $isInsideFormatterModal = $target.closest('#formatterToolboxModal').length > 0;
+            const $isInsideQuickActionToolbar = $target.closest('#quick-action-toolbar').length > 0;
+            const $undoButton = tb.find('button[data-action="undo-quick-action"]');
+
+            if (txt && $msgEl.length > 0 && !$isInsideQuickActionToolbar && !$isInsideFormatterModal) {
+                // New selection made, hide Undo button from previous action if it wasn't used and target is different
+                const currentTargetElementForUndo = tb.data('qa-target-element');
+                if ($undoButton.is(':visible') && details.messageElement !== currentTargetElementForUndo) {
+                    if (currentTargetElementForUndo) $(currentTargetElementForUndo).removeData('qa-undo-state');
+                    $undoButton.hide();
+                    tb.removeData('qa-target-element');
+                }
                 tb.css({top: e.pageY + 10 + 'px', left: Math.min(e.pageX, window.innerWidth - tb.outerWidth() - 10) + 'px', display: 'flex'})
                   .data('selectionDetails', { selection: sel, messageElement: $msgEl[0], lastCustomWrap: tb.data('selectionDetails')?.lastCustomWrap || ""});
-            } else if (!$target.closest('#quick-action-toolbar').length) { tb.hide().removeData('selectionDetails'); }
+            } else if (!$isInsideQuickActionToolbar) {
+                tb.hide().removeData('selectionDetails');
+                if ($undoButton.is(':visible')) { // Also hide Undo button if toolbar is hidden
+                    const undoTarget = tb.data('qa-target-element');
+                    if (undoTarget) $(undoTarget).removeData('qa-undo-state');
+                    $undoButton.hide();
+                    tb.removeData('qa-target-element');
+                }
+            }
         });
-        $(document).off('mousedown.qaToolbarHide').on('mousedown.qaToolbarHide', (e) => { const tb = $('#quick-action-toolbar'); if (tb.is(':visible') && !$(e.target).closest('#quick-action-toolbar').length && window.getSelection().isCollapsed) { tb.hide().removeData('selectionDetails');}});
-        $(window).off('scroll.qaToolbarHide').on('scroll.qaToolbarHide', () => { const tb = $('#quick-action-toolbar'); if (tb.is(':visible')) { tb.hide().removeData('selectionDetails');}});
+        $(document).off('mousedown.qaToolbarHide').on('mousedown.qaToolbarHide', (e) => {
+            const tb = $('#quick-action-toolbar');
+            if (tb.is(':visible') && !$(e.target).closest('#quick-action-toolbar').length && window.getSelection().isCollapsed) {
+                tb.hide().removeData('selectionDetails');
+                const undoButton = tb.find('button[data-action="undo-quick-action"]');
+                if (undoButton.is(':visible')) {
+                    const undoTarget = tb.data('qa-target-element');
+                    if (undoTarget) $(undoTarget).removeData('qa-undo-state');
+                    undoButton.hide();
+                    tb.removeData('qa-target-element');
+                }
+            }
+        });
+        $(window).off('scroll.qaToolbarHide').on('scroll.qaToolbarHide', () => {
+            const tb = $('#quick-action-toolbar');
+            if (tb.is(':visible')) {
+                tb.hide().removeData('selectionDetails');
+                const undoButton = tb.find('button[data-action="undo-quick-action"]');
+                if (undoButton.is(':visible')) {
+                    const undoTarget = tb.data('qa-target-element');
+                    if (undoTarget) $(undoTarget).removeData('qa-undo-state');
+                    undoButton.hide();
+                    tb.removeData('qa-target-element');
+                }
+            }
+        });
     }
     removeTextSelectionListener() { /* ... (already implemented) ... */
         $(document).off('mouseup.qaToolbar mousedown.qaToolbarHide'); $(window).off('scroll.qaToolbarHide');
@@ -363,6 +720,9 @@ class FormatterToolbox {
 
     // Tag Auto-Close Methods
     renderTagAutoCloseSettings() {
+        const description = "Purpose: A smart assistant to help fix broken markup generated by the AI. Features: A master toggle switch in the Toolbox to enable or disable this feature. When the user clicks in the chat, the tool scans the text *before* the cursor for an unclosed XML-style tag (e.g., `<think>`). If an unclosed tag is found, a small, non-intrusive popup appears asking, \"Insert `&lt;/think&gt;` here?\". Clicking \"Yes\" instantly inserts the correct closing tag at the cursor's position.";
+        $('#tab-tag-autoclose .tool-description').html(description);
+
         if (!$('#tac-enabled').length) return;
         const settings = this.settings;
         if (settings.tagAutoCloseEnabled === undefined) {
@@ -419,18 +779,64 @@ class FormatterToolbox {
         const lastUnclosedTag = openTagsStack.pop() || null;
 
         if (lastUnclosedTag) {
-            const charJustBeforeCursor = textBeforeCursor.charAt(cursorPos - 1);
-            const charTwoBeforeCursor = textBeforeCursor.charAt(cursorPos - 2);
-            const lastOpenTagFull = `<${lastUnclosedTag}>`;
-            if (textBeforeCursor.endsWith(lastOpenTagFull) && cursorPos === textBeforeCursor.length) {
-                 this.hideTagAutoClosePopup(); return;
-            }
-            if (charJustBeforeCursor === '"' && charTwoBeforeCursor === '=') {
+            // Condition 0: Empty text before cursor or only whitespace
+            if (textBeforeCursor.trim() === '') {
                 this.hideTagAutoClosePopup(); return;
             }
-            if (/[a-zA-Z0-9_:-]/.test(charJustBeforeCursor) && textBeforeCursor.lastIndexOf('<') > textBeforeCursor.lastIndexOf('>')) {
+
+            const charJustBeforeCursor = textBeforeCursor.charAt(cursorPos - 1);
+
+            // Condition 1: Cursor is still inside a tag definition (e.g., <tag| or <tag attr|)
+            // If the last '<' is after the last '>', we are likely inside a tag.
+            const lastOpenAngle = textBeforeCursor.lastIndexOf('<');
+            const lastCloseAngle = textBeforeCursor.lastIndexOf('>');
+            if (lastOpenAngle > lastCloseAngle) {
                  this.hideTagAutoClosePopup(); return;
             }
+
+            // Condition 2: Cursor is right after the opening tag (e.g. <tag>|)
+            // Test if textBeforeCursor ends with an opening tag pattern for the lastUnclosedTag.
+            // Regex: /<tagName(?:\\s[^>]*)?>$/
+            // Example: <tag attr="value"> immediately followed by cursor.
+            // We need to escape lastUnclosedTag if it contains special regex characters, though tag names usually don't.
+            const escapedLastUnclosedTag = lastUnclosedTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const openTagPattern = new RegExp(`<${escapedLastUnclosedTag}(?:\\s[^>]*)?>$`);
+            if (openTagPattern.test(textBeforeCursor)) {
+                 this.hideTagAutoClosePopup(); return;
+            }
+
+            // Condition 3: Cursor is inside an attribute's quotes.
+            // This is a more specific version of Condition 1, good to keep.
+            // Example: <tag attr="val|" or <tag attr='val|'
+            const textAroundCursor = text.substring(Math.max(0, cursorPos - 10), Math.min(text.length, cursorPos + 10));
+            if (textAroundCursor.match(/=\s*["'][^"']*$/) && charJustBeforeCursor !== '"' && charJustBeforeCursor !== "'") { // Inside quote, but not AT the end quote
+                 //This regex is a bit broad, let's simplify: if charBefore is part of an unterminated attribute value.
+                 //The (lastOpenAngle > lastCloseAngle) should largely cover this.
+                 //The original check was: (charJustBeforeCursor === '"' && charTwoBeforeCursor === '=')
+                 //This is too specific (only for just after attr=").
+                 //A simple check: if the character before cursor is not '>' and we are in a tag (covered by cond 1)
+            }
+            // Condition 3 simplified: if inside a quote that's part of an attribute
+            // Check if there's an unclosed quote for an attribute before the cursor
+            // This specific check might be overly complex if Condition 1 (lastOpenAngle > lastCloseAngle) is robust enough.
+            // For now, we'll rely on Condition 1 to prevent showing inside tag definitions.
+            // const textBeforeCursorNoTags = textBeforeCursor.substring(lastCloseAngle + 1);
+            // let inQuote = null;
+            // for (let i = 0; i < textBeforeCursorNoTags.length; i++) {
+            //     if (textBeforeCursorNoTags[i] === '"' || textBeforeCursorNoTags[i] === "'") {
+            //         if (inQuote === textBeforeCursorNoTags[i]) inQuote = null;
+            //         else if (inQuote === null) inQuote = textBeforeCursorNoTags[i];
+            //     }
+            // }
+            // if (inQuote !== null && lastOpenAngle > lastCloseAngle) {
+            //      this.hideTagAutoClosePopup(); return;
+            // }
+
+            // Condition 4: Don't show if Quick Action Toolbar is already visible (to avoid overlapping popups)
+            if ($('#quick-action-toolbar').is(':visible')) {
+                this.hideTagAutoClosePopup(); return;
+            }
+
             this.showTagAutoClosePopup(targetElement, lastUnclosedTag);
         } else {
             this.hideTagAutoClosePopup();
@@ -653,23 +1059,30 @@ class FormatterToolbox {
             coreSaveChatDebounced(); return true;
         } return false;
     }
-    onMessageUpdate(msgIndex) { /* ... (no changes needed) ... */
+    onMessageUpdate(msgIndex) {
         const context = getContext();
         if (msgIndex >= context.chat.length || msgIndex < 0) return;
         const message = context.chat[msgIndex];
-        if (!this.settings.enabled || !message || message.is_user) { return; }
-        if (message.extra && message.extra.pre_format_mes !== undefined) {
-            message.extra.pre_format_mes = message.mes;
-            message.extra.pre_format_swipes = message.swipes ? [...message.swipes] : undefined;
-            coreSaveChatDebounced();
+
+        // Only concerned with AI messages that this extension might have an interest in.
+        // If it hasn't been formatted before (no original_mes), or formatter is disabled, ignore.
+        if (!this.settings.enabled || !message || message.is_user || !message.extra || message.extra.original_mes === undefined) {
+            return;
         }
-        if (!this.settings.autoFormat) {
-            if (this.formatMessage(message, false)) {
-                const messageElement = document.querySelector(`.mes[mesid="${msgIndex}"] .mes_text`);
-                if (messageElement) { messageElement.innerHTML = coreMessageFormatting(message.mes, message.name, message.is_system, message.is_user, msgIndex); }
-                coreSaveChatDebounced();
-            }
+
+        // If a message previously touched by the formatter is edited,
+        // its current state becomes the new "pre-format" state for any *future* explicit formatting actions.
+        // This ensures that manual edits "stick" until the next explicit format command.
+        message.extra.pre_format_mes = message.mes;
+        if (Array.isArray(message.swipes)) {
+            // Ensure pre_format_swipes matches the structure of swipes if it exists
+            message.extra.pre_format_swipes = message.swipes.map(s => s); // Create new array
+        } else {
+            delete message.extra.pre_format_swipes; // Clear if swipes array no longer exists
         }
+        // No coreSaveChatDebounced() here. This method's responsibility is to update the formatter's
+        // internal understanding of the "pre-format" state. The core application handles saving
+        // the edited message content. This also prevents format-on-edit if autoFormat is off.
     }
 }
 
@@ -764,37 +1177,311 @@ jQuery(async () => {
 
     function addToolboxStyles() {
         const css = `
-            #formatterToolboxModal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
-            #formatterToolboxModal .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 700px; border-radius: 5px; position: relative; }
-            #formatterToolboxModal .close-button { color: #aaa; float: right; font-size: 28px; font-weight: bold; }
-            #formatterToolboxModal .close-button:hover, #formatterToolboxModal .close-button:focus { color: black; text-decoration: none; cursor: pointer; }
-            .formatter-tabs { border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px; display: flex; flex-wrap: wrap;}
-            .formatter-tabs button { background-color: #f1f1f1; border: 1px solid #ccc; padding: 8px 12px; cursor: pointer; margin-right: 2px; border-radius: 3px 3px 0 0; margin-bottom: -1px; }
-            .formatter-tabs button.active { background-color: #ddd; border-bottom: 1px solid #ddd; }
-            .tab-content { display: none; padding: 15px; border: 1px solid #ccc; border-top: none; animation: fadeIn 0.5s; }
+            #formatterToolboxModal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); } /* Darker overlay */
+            #formatterToolboxModal .modal-content {
+                background-color: #f8f8f8; /* Slightly off-white */
+                margin: 5% auto; /* Adjusted margin for smaller screens */
+                padding: 20px; /* Slightly reduced padding for smaller screens */
+                border: 1px solid #bbb; /* More distinct border */
+                width: 90%;  /* More responsive width */
+                max-width: 750px; /* Keeps a max limit for larger screens */
+                border-radius: 6px;
+                position: relative;
+                color: #333; /* Darker base text color */
+                font-size: 1em; /* Base font size */
+                box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+                max-height: 90vh; /* Max height for viewport */
+                overflow-y: auto; /* Scroll for overflow */
+            }
+            #formatterToolboxModal .close-button {
+                color: #888; /* Darker close button */
+                float: right; font-size: 32px; /* Larger */
+                font-weight: bold;
+                line-height: 1; /* Better alignment */
+            }
+            #formatterToolboxModal .close-button:hover,
+            #formatterToolboxModal .close-button:focus { color: #black; text-decoration: none; cursor: pointer; }
+
+            .formatter-tabs {
+                border-bottom: 1px solid #bbb; /* More distinct border */
+                padding-bottom: 0; /* Align with button bottom border */
+                margin-bottom: 20px; /* Increased margin */
+                display: flex;
+                flex-wrap: wrap;
+            }
+            .formatter-tabs button {
+                background-color: #e9e9e9;
+                border: 1px solid #bbb;
+                border-bottom: none; /* Remove bottom border for unselected */
+                padding: 10px 15px; /* More padding */
+                cursor: pointer;
+                margin-right: 4px;
+                border-radius: 4px 4px 0 0;
+                position: relative; /* For z-index or future use */
+                bottom: -1px; /* To align with content border */
+                color: #555; /* Darker text for tabs */
+                font-weight: 500;
+            }
+            .formatter-tabs button.active {
+                background-color: #f8f8f8; /* Match content background */
+                border-color: #bbb;
+                border-bottom: 1px solid #f8f8f8; /* Creates the "connected" look */
+                font-weight: bold;
+                color: #333;
+            }
+            .formatter-tabs button:hover:not(.active) {
+                background-color: #dcdcdc;
+            }
+
+            .tab-content {
+                display: none;
+                padding: 20px;
+                border: 1px solid #bbb; /* More distinct border */
+                border-top: 1px solid #bbb; /* Ensure top border is consistent */
+                animation: fadeIn 0.3s;
+                background-color: #fdfdfd; /* Slightly lighter than modal bg for depth */
+                border-radius: 0 0 4px 4px; /* Rounded bottom corners */
+            }
             .tab-content.active { display: block; }
             @keyframes fadeIn { from {opacity: 0;} to {opacity: 1;} }
-            .formatter-rule-item { display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid #f0f0f0; flex-wrap: wrap; }
+
+            .tool-description {
+                font-size: 0.9em;
+                color: #555;
+                margin-bottom: 15px;
+                padding: 10px;
+                background-color: #f0f0f0;
+                border-radius: 4px;
+                border: 1px solid #e0e0e0;
+            }
+
+            /* Rule items (FnR, Style Mapper) */
+            .formatter-rule-item {
+                display: flex;
+                flex-direction: column; /* Stack elements vertically by default on smaller screens */
+                gap: 10px;
+                padding: 12px;
+                border-bottom: 1px solid #e0e0e0; /* Lighter border for items */
+                flex-wrap: wrap; /* Still allow wrapping if specific items are side-by-side */
+                background-color: #fff;
+                border-radius: 3px;
+                margin-bottom: 8px;
+            }
+            @media (min-width: 600px) { /* Apply row layout for wider screens */
+                .formatter-rule-item {
+                    flex-direction: row;
+                    align-items: flex-start;
+                }
+            }
             .formatter-rule-item:last-child { border-bottom: none; }
-            .formatter-rule-item input[type="text"] { flex-basis: 200px; flex-grow: 1; padding: 5px; margin-bottom: 5px;}
-            .formatter-rule-item label { margin-bottom: 5px; display: flex; align-items: center; white-space: nowrap; }
-            .formatter-rule-item input[type="checkbox"] { margin-right: 3px;}
-            #sm-rules-container, #fnr-rules-container { margin-bottom: 10px; max-height: 300px; overflow-y: auto; border: 1px solid #eee; padding: 5px;}
-            #tool-order-list { border: 1px solid #ccc; padding: 10px; border-radius: 3px; background-color: #f9f9f9; min-height:50px; }
-            .tool-order-item { padding: 8px 12px; background-color: #fff; border: 1px solid #ddd; margin-bottom: 5px; border-radius: 3px; cursor: grab; user-select: none;}
+            .formatter-rule-item div { display: flex; flex-direction: column; flex-grow: 1; } /* Container for label + input */
+            .formatter-rule-item div label { font-size: 0.85em; color: #666; margin-bottom: 3px; }
+            .formatter-rule-item input[type="text"],
+            .formatter-rule-item textarea { /* Assuming textareas might be used */
+                flex-basis: 180px; /* Adjust basis */
+                flex-grow: 1;
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 0.95em;
+            }
+             .formatter-rule-item input[type="text"]:focus,
+             .formatter-rule-item textarea:focus {
+                border-color: #88aaff;
+                box-shadow: 0 0 3px rgba(100, 150, 255, 0.5);
+                outline: none;
+            }
+            .formatter-rule-item .rule-options label { /* For checkboxes */
+                margin-bottom: 0;
+                display: flex;
+                align-items: center;
+                white-space: nowrap;
+                font-size: 0.9em;
+                color: #555;
+                margin-right:10px;
+            }
+            .formatter-rule-item input[type="checkbox"] {
+                margin-right: 5px;
+                vertical-align: middle;
+                height: 1em; width: 1em; /* Consistent checkbox size */
+            }
+            .formatter-rule-item .fnr-delete-rule, .formatter-rule-item .sm-delete-rule { margin-left: auto; align-self: center; }
+
+
+            #sm-rules-container, #fnr-rules-container {
+                margin-bottom: 15px;
+                max-height: 350px; /* More height */
+                overflow-y: auto;
+                border: 1px solid #ddd;
+                padding: 10px;
+                background-color: #f9f9f9;
+                border-radius: 4px;
+            }
+
+            /* Tool Order List */
+            #tool-order-list {
+                border: 1px solid #bbb;
+                padding: 15px;
+                border-radius: 4px;
+                background-color: #f5f5f5;
+                min-height:60px;
+            }
+            .tool-order-item {
+                padding: 10px 15px;
+                background-color: #fff;
+                border: 1px solid #ccc;
+                margin-bottom: 6px;
+                border-radius: 4px;
+                cursor: grab;
+                user-select: none;
+                font-weight: 500;
+                color: #444;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            }
             .tool-order-item:last-child { margin-bottom: 0; }
-            .tool-order-item.dragging { opacity: 0.5; background: #e0e0e0; }
-            .formatter-button { background-color: #e0e0e0; border: 1px solid #ccc; padding: 5px 10px; cursor: pointer; border-radius: 3px; margin-top: 5px; }
-            .formatter-button.delete { background-color: #ffdddd; border-color: #ffaaaa; margin-left: auto; }
-            .formatter-button:hover { background-color: #d0d0d0; }
-            .formatter-button.delete:hover { background-color: #ffcccc; }
-            .formatter-setting-item { display: flex; align-items: center; margin-bottom: 10px; gap: 10px; }
-            .formatter-setting-item label { min-width: 150px; font-size: 0.9em; }
-            .formatter-setting-item select, .formatter-setting-item input[type="number"], .formatter-setting-item input[type="text"] { padding: 5px; border-radius: 3px; border: 1px solid #ccc; font-size: 0.9em; flex-grow: 1; }
-            #quick-action-toolbar button, #quick-action-toolbar select { margin: 2px; padding: 5px 8px; border: 1px solid #ddd; background-color: #f0f0f0; cursor: pointer; border-radius: 3px; }
-            #quick-action-toolbar button:hover, #quick-action-toolbar select:hover { background-color: #e0e0e0; }
-            #tag-autoclose-popup { background-color: #f0f0f0; border: 1px solid #c5c5c5; padding: 6px 10px; border-radius: 3px; box-shadow: 1px 1px 4px rgba(0,0,0,0.15); z-index: 1006; cursor: pointer; font-size: 0.9em;}
-            #tag-autoclose-popup code { background-color: #e0e0e0; padding: 1px 3px; border-radius: 2px; }
+            .tool-order-item.dragging { opacity: 0.6; background: #e8e8e8; border-color: #bbb; }
+
+            /* General Buttons */
+            .formatter-button, button.primary-button { /* Added primary-button class for main add buttons */
+                background-color: #e9e9e9;
+                border: 1px solid #adadad;
+                padding: 8px 15px; /* More padding */
+                cursor: pointer;
+                border-radius: 4px;
+                margin-top: 10px; /* More margin */
+                color: #333;
+                font-weight: 500;
+                transition: background-color 0.15s ease, border-color 0.15s ease;
+            }
+            .formatter-button:hover, button.primary-button:hover {
+                background-color: #d5d5d5;
+                border-color: #999;
+            }
+            .formatter-button.delete {
+                background-color: #ffe0e0;
+                border-color: #ffb0b0;
+                color: #c00;
+            }
+            .formatter-button.delete:hover {
+                background-color: #ffcfcf;
+                border-color: #ffa0a0;
+            }
+
+            /* Settings items (General, Paragraph Control etc.) */
+            .formatter-setting-item {
+                display: flex;
+                flex-direction: column; /* Stack label and input vertically on small screens */
+                align-items: flex-start; /* Align items to the start */
+                margin-bottom: 15px;
+                gap: 8px; /* Reduced gap for vertical layout */
+                padding: 10px;
+                border-radius: 4px;
+                background-color: #fff;
+                border: 1px solid #e0e0e0;
+            }
+            @media (min-width: 600px) { /* Apply row layout for wider screens */
+                .formatter-setting-item {
+                    flex-direction: row;
+                    align-items: center;
+                    gap: 15px;
+                }
+            }
+            .formatter-setting-item label {
+                min-width: auto; /* Allow label to take natural width in vertical layout */
+                font-size: 0.95em;
+                color: #444;
+                font-weight: 500;
+                margin-bottom: 0; /* Reset margin */
+                display: inline-block;
+                vertical-align: middle;
+            }
+            @media (min-width: 600px) {
+                .formatter-setting-item label {
+                    min-width: 200px; /* Restore min-width for row layout */
+                }
+            }
+            .formatter-setting-item select,
+            .formatter-setting-item input[type="number"],
+            .formatter-setting-item input[type="text"],
+            .formatter-setting-item input[type="checkbox"] {
+                padding: 8px;
+                border-radius: 4px;
+                border: 1px solid #ccc;
+                font-size: 0.95em;
+                flex-grow: 1;
+                background-color: #fff;
+                vertical-align: middle;
+                width: 100%; /* Make inputs take full width in vertical layout */
+                box-sizing: border-box; /* Ensure padding doesn't break layout */
+            }
+             .formatter-setting-item input[type="checkbox"] {
+                flex-grow: 0;
+                margin-right: 5px;
+                width: auto; /* Checkboxes should not be full width */
+            }
+            @media (min-width: 600px) {
+                .formatter-setting-item select,
+                .formatter-setting-item input[type="number"],
+                .formatter-setting-item input[type="text"] {
+                    width: auto; /* Revert to auto width for row layout */
+                }
+            }
+            .formatter-setting-item select:focus,
+            .formatter-setting-item input[type="number"]:focus,
+            .formatter-setting-item input[type="text"]:focus {
+                border-color: #88aaff;
+                box-shadow: 0 0 3px rgba(100, 150, 255, 0.5);
+                outline: none;
+            }
+
+            /* Specific Section Titles (Example - could be a class on h3/h4) */
+            .tab-content h3, .tab-content h4 {
+                color: #555;
+                font-weight: bold;
+                margin-top: 10px;
+                margin-bottom: 15px;
+                padding-bottom: 5px;
+                border-bottom: 1px solid #eee;
+            }
+            .tab-content h3:first-child, .tab-content h4:first-child { margin-top: 0; }
+
+
+            /* Quick Action Toolbar & Tag Autoclose Popup - Minor touch-ups */
+            #quick-action-toolbar {
+                border: 1px solid #bbb; /* Darker border */
+                box-shadow: 2px 2px 8px rgba(0,0,0,0.25); /* Enhanced shadow */
+                background-color: #f8f8f8; /* Consistent background */
+            }
+            #quick-action-toolbar button, #quick-action-toolbar select {
+                margin: 3px;
+                padding: 6px 10px;
+                border: 1px solid #ccc;
+                background-color: #f0f0f0;
+                cursor: pointer;
+                border-radius: 3px;
+                font-size: 0.9em;
+            }
+            #quick-action-toolbar button:hover, #quick-action-toolbar select:hover { background-color: #e0e0e0; border-color: #bbb; }
+
+            /* Ensure popups are not too wide on mobile */
+            #quick-action-toolbar, #tag-autoclose-popup {
+                max-width: 90vw; /* Prevent popups from being wider than viewport */
+            }
+
+            #tag-autoclose-popup {
+                background-color: #f8f8f8; /* Consistent background */
+                border: 1px solid #b0b0b0;
+                padding: 8px 12px;
+                border-radius: 4px;
+                box-shadow: 1px 1px 5px rgba(0,0,0,0.2);
+                font-size: 0.9em;
+            }
+            #tag-autoclose-popup code {
+                background-color: #e8e8e8;
+                padding: 2px 4px;
+                border-radius: 3px;
+                border: 1px solid #ddd;
+            }
         `;
         $('<style>').prop('type', 'text/css').html(css).appendTo('head');
     }
@@ -844,3 +1531,72 @@ jQuery(async () => {
     eventSource.on(event_types.MESSAGE_UPDATED, (msgIndex) => formatterToolbox.onMessageUpdate(msgIndex));
     eventSource.on(event_types.MESSAGE_EDITED, (msgIndex) => formatterToolbox.onMessageUpdate(msgIndex));
 });
+
+/*
+// TODO: Future /mf command for command-line settings manipulation
+//
+// Goal: Allow quick command-line toggling/setting of tool properties.
+// Command Structure: /mf <tool_name_alias> <setting_path> [value]
+//
+// <tool_name_alias>:
+//   - fnr, findreplace -> FindAndReplaceTool
+//   - pc, paragraph -> ParagraphControlTool
+//   - sm, stylemapper -> StyleMapperTool
+//   - sp, smartpunctuation -> SmartPunctuationTool
+//   - cf, caseformatter -> CaseFormatterTool
+//   - qa, quickaction -> Quick Action Toolbar settings (e.g., 'enabled', 'addpreset')
+//   - tac, tagautoclose -> Tag Auto-Close settings (e.g., 'enabled')
+//   - general -> General settings like 'enabled', 'autoFormat'
+//
+// <setting_path>:
+//   - A direct property name (e.g., "enabled", "autoFormat", "paragraphControlMode").
+//   - For tool-specific settings, it would be a property of that tool's settings object if refactored,
+//     or directly on `formatterToolbox.settings` using current structure.
+//   - Examples:
+//     - "enabled" (master switch for a specific tool if implemented, or for 'general')
+//     - "autoFormat" (for 'general')
+//     - "paragraphControlMode" (for 'paragraph') -> becomes settings.paragraphControlMode
+//     - "positiveReplacement" (for 'smartpunctuation') -> settings.positiveReplacement
+//     - "caseFormatterSentenceCase" (for 'caseformatter') -> settings.caseFormatterSentenceCase
+//     - For list-based rules (FnR, StyleMapper, QA Presets):
+//       - "addrule <find_str> <replace_str> [isRegex] [caseSensitive] [enabled]" (for fnr)
+//       - "delrule <index_or_find_str>" (for fnr)
+//       - "togglerule <index_or_find_str>" (for fnr)
+//
+// [value]:
+//   - The value to set. Boolean for toggles ('true'/'false', 'on'/'off', '1'/'0').
+//   - String for text values. Number for numerical values.
+//   - Specific keywords for modes (e.g., 'single', 'max', 'none' for paragraph mode).
+//
+// Example Command Ideas:
+//   - /mf general autoFormat false          (Disable general auto-format)
+//   - /mf paragraph paragraphControlMode single (Set paragraph mode to single)
+//   - /mf pc paragraphControlMode max         (Alias for paragraph tool)
+//   - /mf pc paragraphControlMax 5          (Set max paragraphs to 5)
+//   - /mf fnr addrule "teh" "the"           (Add a simple text replacement rule)
+//   - /mf fnr addrule "test(\\d)" "Test $1" true (Add a regex rule)
+//   - /mf fnr delrule "teh"                 (Delete rule by 'find' string)
+//   - /mf fnr togglerule 0                  (Toggle enable state of rule at index 0)
+//   - /mf sp positiveReplacement "!!"       (Change smart punctuation positive replacement)
+//   - /mf qa addpreset "QuoteIt" "\"" "\""  (Add a QA preset for quotes)
+//
+// Implementation Sketch:
+// 1. Extend current `/formatter` (alias `/mf`) slash command or add a new one.
+//    - It might be better to have `/mfset <tool> <path> [value]` to differentiate from `/mf` opening the UI.
+// 2. Parser needs to handle variable arguments.
+// 3. Callback logic:
+//    a. Load formatterToolbox.settings.
+//    b. Create a mapping from <tool_name_alias> to actual setting keys or tool objects.
+//    c. Based on <tool_name_alias> and <setting_path>:
+//       i.  Navigate/identify the target setting property in `formatterToolbox.settings`.
+//       ii. For simple properties, validate and coerce `value` to the correct type (boolean, number, string).
+//       iii.For list manipulations (addrule, delrule), perform array operations.
+//    d. Update `formatterToolbox.settings`.
+//    e. Call `formatterToolbox.saveSettings()`.
+//    f. Call relevant `formatterToolbox.render<ToolName>Settings()` if UI needs update (e.g. after adding a rule).
+//       - Or perhaps a general `formatterToolbox.initializeDynamicContentTypes()` if settings change broadly.
+//    g. Provide feedback to user (toastr.success/error).
+//
+// This requires careful parsing, validation, and mapping to ensure robustness.
+// Type coercion for values will be important (e.g., "true" -> true, "0.5" -> 0.5).
+*/

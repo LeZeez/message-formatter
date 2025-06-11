@@ -15,6 +15,7 @@
         </div>
 
         <div id="tab-general" class="tab-content active"> <!-- Ensure 'active' is set if it's the default tab -->
+            <!-- Description will be handled by individual tools if needed, or a general one here -->
             <h4>General Settings</h4>
             <div class="formatter-setting-item">
                 <label for="general-enable-formatter">Enable Formatter Toolbox (Master Switch):</label>
@@ -40,23 +41,33 @@
             </ul>
         </div>
         <div id="tab-find-replace" class="tab-content">
+               <p class="tool-description">Loading description...</p>
                <h4>Find & Replace Rules</h4>
                <div id="fnr-rules-container">
                    <!-- Rules will be dynamically added here -->
                </div>
-               <button id="fnr-add-rule" class="formatter-button">Add New Rule</button>
+               <button id="fnr-add-rule" class="formatter-button primary-button">Add New Rule</button>
                <div id="fnr-rule-template" style="display: none;">
-                   <div class="fnr-rule-item">
-                       <input type="text" class="fnr-find" placeholder="Find (Text or Regex)">
-                       <input type="text" class="fnr-replace" placeholder="Replace With">
-                       <label><input type="checkbox" class="fnr-is-regex"> Regex</label>
-                       <label><input type="checkbox" class="fnr-case-sensitive"> Case Sensitive</label>
-                       <label><input type="checkbox" class="fnr-enabled" checked> Enabled</label>
+                   <div class="fnr-rule-item formatter-rule-item"> <!-- Added formatter-rule-item -->
+                       <div>
+                           <label>Find (Text or Regex)</label>
+                           <input type="text" class="fnr-find" placeholder="Find (Text or Regex)">
+                       </div>
+                       <div>
+                           <label>Replace With</label>
+                           <input type="text" class="fnr-replace" placeholder="Replace With">
+                       </div>
+                       <div class="rule-options"> <!-- Wrapper for checkboxes -->
+                           <label><input type="checkbox" class="fnr-is-regex"> Regex</label>
+                           <label><input type="checkbox" class="fnr-case-sensitive"> Case Sensitive</label>
+                           <label><input type="checkbox" class="fnr-enabled" checked> Enabled</label>
+                       </div>
                        <button class="fnr-delete-rule formatter-button delete">Delete</button>
                    </div>
                </div>
         </div>
         <div id="tab-paragraph-control" class="tab-content">
+               <p class="tool-description">Loading description...</p>
                <h4>Paragraph Control Settings</h4>
                <div class="formatter-setting-item">
                    <label for="pc-mode">Mode:</label>
@@ -77,23 +88,39 @@
                </div>
         </div>
         <div id="tab-style-mapper" class="tab-content">
+               <p class="tool-description">Loading description...</p>
                <h4>Style Mapper Rules</h4>
                <div id="sm-rules-container">
                    <!-- Rules will be dynamically added here -->
                </div>
-               <button id="sm-add-rule" class="formatter-button">Add New Rule</button>
+               <button id="sm-add-rule" class="formatter-button primary-button">Add New Rule</button>
                <div id="sm-rule-template" style="display: none;">
-                   <div class="sm-rule-item formatter-rule-item"> <!-- Added generic formatter-rule-item class -->
-                       <input type="text" class="sm-name" placeholder="Rule Name (e.g., Italics)">
-                       <input type="text" class="sm-find-regex" placeholder="Find Regex (e.g., \*([^\*]+?)\*)">
-                       <input type="text" class="sm-tag-name" placeholder="Tag Name (e.g., thought)">
-                       <input type="text" class="sm-replace-pattern" value="$TAG_START$1$TAG_END" placeholder="Replacement (use $1, $TAG_START, $TAG_END)">
-                       <label><input type="checkbox" class="sm-enabled" checked> Enabled</label>
+                   <div class="sm-rule-item formatter-rule-item">
+                       <div>
+                           <label>Rule Name</label>
+                           <input type="text" class="sm-name" placeholder="Rule Name (e.g., Italics)">
+                       </div>
+                       <div>
+                           <label>Find Regex</label>
+                           <input type="text" class="sm-find-regex" placeholder="Find Regex (e.g., \*([^\*]+?)\*)">
+                       </div>
+                       <div>
+                           <label>Tag Name</label>
+                           <input type="text" class="sm-tag-name" placeholder="Tag Name (e.g., thought)">
+                       </div>
+                       <div>
+                           <label>Replacement Pattern</label>
+                           <input type="text" class="sm-replace-pattern" value="$TAG_START$1$TAG_END" placeholder="Use $1, $TAG_START, $TAG_END">
+                       </div>
+                       <div class="rule-options">
+                           <label><input type="checkbox" class="sm-enabled" checked> Enabled</label>
+                       </div>
                        <button class="sm-delete-rule formatter-button delete">Delete</button>
                    </div>
                </div>
         </div>
         <div id="tab-smart-punctuation" class="tab-content">
+               <p class="tool-description">Loading description...</p>
                <h4>Smart Punctuation Settings</h4>
                <div class="formatter-setting-item">
                    <label for="sp-enabled">Enable Smart Punctuation:</label>
@@ -125,6 +152,7 @@
                </div>
         </div>
         <div id="tab-case-formatter" class="tab-content">
+               <p class="tool-description">Loading description...</p>
                <h4>Case Formatter Settings</h4>
                <div class="formatter-setting-item">
                    <label for="cf-sentence-case">Enable Sentence Case:</label>
@@ -134,6 +162,7 @@
                <!-- e.g., Title Case, UPPERCASE all, lowercase all for specific tags -->
         </div>
         <div id="tab-quick-action" class="tab-content">
+               <!-- No specific tool description for this one as it's not part of the automatic pipeline -->
                <h4>Quick-Action Toolbar Settings</h4>
                <div class="formatter-setting-item">
                    <label for="qa-toolbar-enabled">Enable Quick-Action Toolbar on Text Selection:</label>
@@ -141,10 +170,35 @@
                </div>
                <p style="font-size: 0.9em; color: #555; margin-top: 10px;">
                    When enabled, selecting text in a chat message will show a small toolbar for quick formatting actions.
-                   (Inspired by features seen in extensions like splitclover/rewrite-extension).
                </p>
+
+               <hr style="margin: 20px 0;">
+               <h4>Custom Wrapper Presets</h4>
+               <p style="font-size: 0.9em; color: #555; margin-bottom: 10px;">
+                   Define reusable wrapper presets that will appear as buttons on the Quick-Action Toolbar.
+               </p>
+               <div id="qa-preset-management" style="margin-bottom: 15px;">
+                   <div class="formatter-setting-item" style="gap: 5px; background-color: #f9f9f9; padding:10px; border-radius:4px;">
+                       <input type="text" id="qa-preset-name" placeholder="Preset Name (e.g., Parens)" style="flex-grow:1;">
+                       <input type="text" id="qa-preset-start" placeholder="Start (e.g., ()" style="flex-grow:0.5;">
+                       <input type="text" id="qa-preset-end" placeholder="End (e.g., ))" style="flex-grow:0.5;">
+                       <button id="qa-add-preset" class="formatter-button primary-button" style="margin-top:0; padding: 8px 12px;">Add</button>
+                   </div>
+               </div>
+               <div id="qa-presets-list-container">
+                   <!-- Presets will be listed here -->
+                   <!-- Example of a preset item:
+                   <div class="formatter-rule-item qa-preset-item">
+                       <div><label>Name</label><span>Parentheses</span></div>
+                       <div><label>Start</label><code>(</code></div>
+                       <div><label>End</label><code>)</code></div>
+                       <button class="formatter-button delete qa-delete-preset" data-preset-name="Parentheses">Delete</button>
+                   </div>
+                   -->
+               </div>
         </div>
         <div id="tab-tag-autoclose" class="tab-content">
+               <!-- No specific tool description for this one -->
                <h4>Tag Auto-Close Settings</h4>
                <div class="formatter-setting-item">
                    <label for="tac-enabled">Enable Tag Auto-Close Assistance:</label>

@@ -1,12 +1,12 @@
 {
-    "display_name": "Message Formatter",
+    "display_name": "Formatter Toolbox",
     "loading_order": 10,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "",
     "author": "LeZeez",
-    "version": "1.0.1",
+    "version": "2.0.0",
     "homePage": "https://github.com/LeZeez/message-formatter",
     "auto_update": true
 }
